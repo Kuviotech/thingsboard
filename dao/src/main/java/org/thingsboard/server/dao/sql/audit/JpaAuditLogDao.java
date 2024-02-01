@@ -15,8 +15,6 @@
  */
 package org.thingsboard.server.dao.sql.audit;
 
-import com.datastax.oss.driver.api.core.uuid.Uuids;
-import com.google.common.util.concurrent.ListenableFuture;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,10 +23,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.audit.AuditLog;
-import org.thingsboard.server.common.data.id.AuditLogId;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.EntityId;
-import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.TimePageLink;
@@ -36,12 +32,11 @@ import org.thingsboard.server.dao.DaoUtil;
 import org.thingsboard.server.dao.audit.AuditLogDao;
 import org.thingsboard.server.dao.model.ModelConstants;
 import org.thingsboard.server.dao.model.sql.AuditLogEntity;
-import org.thingsboard.server.dao.sql.JpaAbstractDao;
+import org.thingsboard.server.dao.sql.JpaPartitionedAbstractDao;
 import org.thingsboard.server.dao.sqlts.insert.sql.SqlPartitioningRepository;
 import org.thingsboard.server.dao.util.SqlDao;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -49,7 +44,7 @@ import java.util.concurrent.TimeUnit;
 @SqlDao
 @RequiredArgsConstructor
 @Slf4j
-public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> implements AuditLogDao {
+public class JpaAuditLogDao extends JpaPartitionedAbstractDao<AuditLogEntity, AuditLog> implements AuditLogDao {
 
     private final AuditLogRepository auditLogRepository;
     private final SqlPartitioningRepository partitioningRepository;
@@ -60,7 +55,7 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
     @Value("${sql.ttl.audit_logs.ttl:0}")
     private long ttlInSec;
 
-    private static final String TABLE_NAME = ModelConstants.AUDIT_LOG_COLUMN_FAMILY_NAME;
+    private static final String TABLE_NAME = ModelConstants.AUDIT_LOG_TABLE_NAME;
 
     @Override
     protected Class<AuditLogEntity> getEntityClass() {
@@ -73,25 +68,6 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
     }
 
     @Override
-    public ListenableFuture<Void> saveByTenantId(AuditLog auditLog) {
-        return service.submit(() -> {
-            save(auditLog.getTenantId(), auditLog);
-            return null;
-        });
-    }
-
-    @Override
-    public AuditLog save(TenantId tenantId, AuditLog auditLog) {
-        if (auditLog.getId() == null) {
-            UUID uuid = Uuids.timeBased();
-            auditLog.setId(new AuditLogId(uuid));
-            auditLog.setCreatedTime(Uuids.unixTimestamp(uuid));
-        }
-        partitioningRepository.createPartitionIfNotExists(TABLE_NAME, auditLog.getCreatedTime(), TimeUnit.HOURS.toMillis(partitionSizeInHours));
-        return super.save(tenantId, auditLog);
-    }
-
-    @Override
     public PageData<AuditLog> findAuditLogsByTenantIdAndEntityId(UUID tenantId, EntityId entityId, List<ActionType> actionTypes, TimePageLink pageLink) {
         return DaoUtil.toPageData(
                 auditLogRepository
@@ -99,7 +75,7 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
                                 tenantId,
                                 entityId.getEntityType(),
                                 entityId.getId(),
-                                Objects.toString(pageLink.getTextSearch(), ""),
+                                pageLink.getTextSearch(),
                                 pageLink.getStartTime(),
                                 pageLink.getEndTime(),
                                 actionTypes,
@@ -113,7 +89,7 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
                         .findAuditLogsByTenantIdAndCustomerId(
                                 tenantId,
                                 customerId.getId(),
-                                Objects.toString(pageLink.getTextSearch(), ""),
+                                pageLink.getTextSearch(),
                                 pageLink.getStartTime(),
                                 pageLink.getEndTime(),
                                 actionTypes,
@@ -127,7 +103,7 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
                         .findAuditLogsByTenantIdAndUserId(
                                 tenantId,
                                 userId.getId(),
-                                Objects.toString(pageLink.getTextSearch(), ""),
+                                pageLink.getTextSearch(),
                                 pageLink.getStartTime(),
                                 pageLink.getEndTime(),
                                 actionTypes,
@@ -139,7 +115,7 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
         return DaoUtil.toPageData(
                 auditLogRepository.findByTenantId(
                         tenantId,
-                        Objects.toString(pageLink.getTextSearch(), ""),
+                        pageLink.getTextSearch(),
                         pageLink.getStartTime(),
                         pageLink.getEndTime(),
                         actionTypes,
@@ -180,6 +156,11 @@ public class JpaAuditLogDao extends JpaAbstractDao<AuditLogEntity, AuditLog> imp
 
     private void callMigrationFunction(long startTime, long endTime, long partitionSizeInMs) {
         jdbcTemplate.update("CALL migrate_audit_logs(?, ?, ?)", startTime, endTime, partitionSizeInMs);
+    }
+
+    @Override
+    public void createPartition(AuditLogEntity entity) {
+        partitioningRepository.createPartitionIfNotExists(TABLE_NAME, entity.getCreatedTime(), TimeUnit.HOURS.toMillis(partitionSizeInHours));
     }
 
 }

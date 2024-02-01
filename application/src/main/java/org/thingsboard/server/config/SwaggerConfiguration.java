@@ -87,6 +87,8 @@ import static springfox.documentation.builders.PathSelectors.regex;
 @Profile("!test")
 public class SwaggerConfiguration {
 
+    @Value("${swagger.enabled:true}")
+    private boolean enabled;
     @Value("${swagger.api_path_regex}")
     private String apiPathRegex;
     @Value("${swagger.security_path_regex}")
@@ -116,6 +118,7 @@ public class SwaggerConfiguration {
     public Docket thingsboardApi() {
         TypeResolver typeResolver = new TypeResolver();
         return new Docket(DocumentationType.OAS_30)
+                .enable(enabled)
                 .groupName("thingsboard")
                 .apiInfo(apiInfo())
                 .additionalModels(
@@ -190,7 +193,7 @@ public class SwaggerConfiguration {
                 .defaultModelExpandDepth(1)
                 .defaultModelRendering(ModelRendering.EXAMPLE)
                 .displayRequestDuration(false)
-                .docExpansion(DocExpansion.NONE)
+                .docExpansion(DocExpansion.LIST)
                 .filter(false)
                 .maxDisplayedTags(null)
                 .operationsSorter(OperationsSorter.ALPHA)

@@ -20,7 +20,11 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.thingsboard</groupId>
+<<<<<<< HEAD
         <version>3.5.1</version>
+=======
+        <version>3.6.2-SNAPSHOT</version>
+>>>>>>> hotfix/3.6.2
         <artifactId>msa</artifactId>
     </parent>
     <groupId>org.thingsboard.msa</groupId>
@@ -80,7 +84,7 @@
                             <goal>install-node-and-yarn</goal>
                         </goals>
                         <configuration>
-                            <nodeVersion>v16.15.1</nodeVersion>
+                            <nodeVersion>v16.20.2</nodeVersion>
                             <yarnVersion>v1.22.17</yarnVersion>
                         </configuration>
                     </execution>
