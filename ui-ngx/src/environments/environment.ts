@@ -19,13 +19,14 @@
 // The list of file replacements can be found in `angular.json`.
 
 export const environment = {
-  appTitle: 'Imperium',
+  appTitle: 'Kuvio',
   production: false,
 // @ts-ignore
   tbVersion: TB_VERSION,
 // @ts-ignore
   supportedLangs: SUPPORTED_LANGS,
-  defaultLang: 'en_US'
+  //defaultLang: 'en_US'
+  defaultLang: 'es_ES'
 };
 
 /*
