@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2024 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -248,6 +248,11 @@ export class EntityAutocompleteComponent implements ControlValueAccessor, OnInit
           this.entityText = 'alarm.alarm';
           this.noEntitiesMatchingText = 'alarm.no-alarms-matching';
           this.entityRequiredText = 'alarm.alarm-required';
+          break;
+        case EntityType.QUEUE_STATS:
+          this.entityText = 'queue-statistics.queue-statistics';
+          this.noEntitiesMatchingText = 'queue-statistics.no-queue-statistics-matching';
+          this.entityRequiredText = 'queue-statistics.queue-statistics-required';
           break;
         case AliasEntityType.CURRENT_CUSTOMER:
           this.entityText = 'customer.default-customer';

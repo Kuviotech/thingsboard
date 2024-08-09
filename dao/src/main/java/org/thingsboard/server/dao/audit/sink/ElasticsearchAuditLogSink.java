@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2024 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import org.apache.http.client.CredentialsProvider;
 import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.nio.entity.NStringEntity;
+import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.ResponseListener;
 import org.elasticsearch.client.RestClient;
@@ -39,8 +40,8 @@ import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.audit.AuditLog;
 import org.thingsboard.server.common.data.id.TenantId;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
@@ -124,12 +125,10 @@ public class ElasticsearchAuditLogSink implements AuditLogSink {
                 jsonContent,
                 ContentType.APPLICATION_JSON);
 
-        restClient.performRequestAsync(
-                HttpMethod.POST.name(),
-                String.format("/%s/%s", getIndexName(auditLogEntry.getTenantId()), INDEX_TYPE),
-                Collections.emptyMap(),
-                entity,
-                responseListener);
+        Request request = new Request(HttpMethod.POST.name(),String.format("/%s/%s", getIndexName(auditLogEntry.getTenantId()), INDEX_TYPE));
+        request.setEntity(entity);
+
+        restClient.performRequestAsync(request, responseListener);
     }
 
     private String createElasticJsonRecord(AuditLog auditLog) {
