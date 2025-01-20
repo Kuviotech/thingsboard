@@ -17,8 +17,8 @@
 import {
   ChangeDetectorRef,
   Component,
-  ComponentFactoryResolver,
   ComponentRef,
+  DestroyRef,
   forwardRef,
   Input,
   OnDestroy,
@@ -85,6 +85,7 @@ import { coerceBoolean } from '@shared/decorators/coercion';
 import { basicWidgetConfigComponentsMap } from '@home/components/widget/config/basic/basic-widget-config.module';
 import { TimewindowConfigData } from '@home/components/widget/config/timewindow-config-panel.component';
 import { DataKeySettingsFunction } from '@home/components/widget/config/data-keys.component.models';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import Timeout = NodeJS.Timeout;
 
 const emptySettingsSchema: JsonSchema = {
@@ -166,6 +167,7 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
 
   widgetConfigCallbacks: WidgetConfigCallbacks = {
     createEntityAlias: this.createEntityAlias.bind(this),
+    editEntityAlias: this.editEntityAlias.bind(this),
     createFilter: this.createFilter.bind(this),
     generateDataKey: this.generateDataKey.bind(this),
     fetchEntityKeysForDevice: this.fetchEntityKeysForDevice.bind(this),
@@ -212,9 +214,9 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
               private entityService: EntityService,
               private dialog: MatDialog,
               public translate: TranslateService,
-              private cfr: ComponentFactoryResolver,
               private fb: UntypedFormBuilder,
-              private cd: ChangeDetectorRef) {
+              private cd: ChangeDetectorRef,
+              private destroyRef: DestroyRef) {
     super(store);
   }
 
@@ -249,7 +251,10 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
     });
 
     merge(this.widgetSettings.get('showTitle').valueChanges,
-          this.widgetSettings.get('showTitleIcon').valueChanges).subscribe(() => {
+          this.widgetSettings.get('showTitleIcon').valueChanges
+    ).pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateWidgetSettingsEnabledState();
     });
 
@@ -262,7 +267,9 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
       desktopHide: [false]
     });
 
-    this.layoutSettings.get('resizable').valueChanges.subscribe(() => {
+    this.layoutSettings.get('resizable').valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateLayoutEnabledState();
     });
 
@@ -444,10 +451,9 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
       this.basicModeDirectiveError = this.translate.instant('widget-config.settings-component-not-found',
         {selector: this.modelValue.basicModeDirective});
     } else {
-      const factory = this.cfr.resolveComponentFactory(componentType);
       this.createBasicModeComponentTimeout = setTimeout(() => {
         this.createBasicModeComponentTimeout = null;
-        this.basicModeComponentRef = this.basicModeContainer.createComponent(factory);
+        this.basicModeComponentRef = this.basicModeContainer.createComponent(componentType);
         this.basicModeComponent = this.basicModeComponentRef.instance;
         this.basicModeComponent.isAdd = isAdd;
         this.basicModeComponent.widgetConfig = this.modelValue;
@@ -833,6 +839,27 @@ export class WidgetConfigComponent extends PageComponent implements OnInit, OnDe
         allowedEntityTypes,
         entityAliases: this.dashboard.configuration.entityAliases,
         alias: singleEntityAlias
+      }
+    }).afterClosed().pipe(
+      tap((entityAlias) => {
+        if (entityAlias) {
+          this.dashboard.configuration.entityAliases[entityAlias.id] = entityAlias;
+          this.aliasController.updateEntityAliases(this.dashboard.configuration.entityAliases);
+        }
+      })
+    );
+  }
+
+  private editEntityAlias(alias: EntityAlias, allowedEntityTypes: Array<EntityType>): Observable<EntityAlias> {
+    return this.dialog.open<EntityAliasDialogComponent, EntityAliasDialogData,
+      EntityAlias>(EntityAliasDialogComponent, {
+      disableClose: true,
+      panelClass: ['tb-dialog', 'tb-fullscreen-dialog'],
+      data: {
+        isAdd: false,
+        allowedEntityTypes,
+        entityAliases: this.dashboard.configuration.entityAliases,
+        alias: deepClone(alias)
       }
     }).afterClosed().pipe(
       tap((entityAlias) => {

@@ -27,6 +27,7 @@ import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.UserActivationLink;
+import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.security.Authority;
 import org.thingsboard.server.common.data.security.UserCredentials;
 import org.thingsboard.server.common.data.security.model.SecuritySettings;
@@ -67,31 +68,31 @@ public class AuthControllerTest extends AbstractControllerTest {
                 .andExpect(status().isUnauthorized());
 
         loginSysAdmin();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.SYS_ADMIN.name())))
-                .andExpect(jsonPath("$.email", is(SYS_ADMIN_EMAIL)));
+        User user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.SYS_ADMIN);
+        assertThat(user.getEmail()).isEqualTo(SYS_ADMIN_EMAIL);
 
         loginTenantAdmin();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.TENANT_ADMIN.name())))
-                .andExpect(jsonPath("$.email", is(TENANT_ADMIN_EMAIL)));
+        user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.TENANT_ADMIN);
+        assertThat(user.getEmail()).isEqualTo(TENANT_ADMIN_EMAIL);
 
         loginCustomerUser();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.CUSTOMER_USER.name())))
-                .andExpect(jsonPath("$.email", is(CUSTOMER_USER_EMAIL)));
+        user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.CUSTOMER_USER);
+        assertThat(user.getEmail()).isEqualTo(CUSTOMER_USER_EMAIL);
+        user = getUser(customerUserId);
+        assertThat(user.getAdditionalInfo().get("userCredentialsEnabled").asBoolean()).isTrue();
+        assertThat(user.getAdditionalInfo().get("userActivated").asBoolean()).isTrue();
+        assertThat(user.getAdditionalInfo().get("lastLoginTs").asLong()).isCloseTo(System.currentTimeMillis(), within(10000L));
     }
 
     @Test
     public void testLoginLogout() throws Exception {
         loginSysAdmin();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.SYS_ADMIN.name())))
-                .andExpect(jsonPath("$.email", is(SYS_ADMIN_EMAIL)));
+        User user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.SYS_ADMIN);
+        assertThat(user.getEmail()).isEqualTo(SYS_ADMIN_EMAIL);
 
         TimeUnit.SECONDS.sleep(1); //We need to make sure that event for invalidating token was successfully processed
 
@@ -103,18 +104,44 @@ public class AuthControllerTest extends AbstractControllerTest {
     }
 
     @Test
+    public void testFailedLogin() throws Exception {
+        int maxFailedLoginAttempts = 3;
+        loginSysAdmin();
+        updateSecuritySettings(securitySettings -> {
+            securitySettings.setMaxFailedLoginAttempts(maxFailedLoginAttempts);
+        });
+        loginTenantAdmin();
+
+        for (int i = 0; i < maxFailedLoginAttempts; i++) {
+            String error = getErrorMessage(doPost("/api/auth/login",
+                    new LoginRequest(CUSTOMER_USER_EMAIL, "IncorrectPassword"))
+                    .andExpect(status().isUnauthorized()));
+            assertThat(error).containsIgnoringCase("invalid username or password");
+        }
+
+        User user = getUser(customerUserId);
+        assertThat(user.getAdditionalInfo().get("userCredentialsEnabled").asBoolean()).isTrue();
+
+        String error = getErrorMessage(doPost("/api/auth/login",
+                new LoginRequest(CUSTOMER_USER_EMAIL, "IncorrectPassword4"))
+                .andExpect(status().isUnauthorized()));
+        assertThat(error).containsIgnoringCase("account is locked");
+
+        user = getUser(customerUserId);
+        assertThat(user.getAdditionalInfo().get("userCredentialsEnabled").asBoolean()).isFalse();
+    }
+
+    @Test
     public void testRefreshToken() throws Exception {
         loginSysAdmin();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.SYS_ADMIN.name())))
-                .andExpect(jsonPath("$.email", is(SYS_ADMIN_EMAIL)));
+        User user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.SYS_ADMIN);
+        assertThat(user.getEmail()).isEqualTo(SYS_ADMIN_EMAIL);
 
         refreshToken();
-        doGet("/api/auth/user")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.authority", is(Authority.SYS_ADMIN.name())))
-                .andExpect(jsonPath("$.email", is(SYS_ADMIN_EMAIL)));
+        user = getCurrentUser();
+        assertThat(user.getAuthority()).isEqualTo(Authority.SYS_ADMIN);
+        assertThat(user.getEmail()).isEqualTo(SYS_ADMIN_EMAIL);
     }
 
     @Test
@@ -217,6 +244,7 @@ public class AuthControllerTest extends AbstractControllerTest {
         user.setAuthority(Authority.TENANT_ADMIN);
         user.setEmail("tenant-admin-2@thingsboard.org");
         user = doPost("/api/user", user, User.class);
+        assertThat(getUser(user.getId()).getAdditionalInfo().get("userActivated").asBoolean()).isFalse();
 
         UserCredentials userCredentials = userCredentialsDao.findByUserId(tenantId, user.getUuidId());
         assertThat(userCredentials.getActivateTokenExpTime()).isCloseTo(System.currentTimeMillis() + TimeUnit.HOURS.toMillis(ttl), Offset.offset(120000L));
@@ -263,6 +291,7 @@ public class AuthControllerTest extends AbstractControllerTest {
         doPost("/api/noauth/activate", JacksonUtil.newObjectNode()
                 .put("activateToken", newActivationToken)
                 .put("password", "wefewe")).andExpect(status().isOk());
+        assertThat(getUser(user.getId()).getAdditionalInfo().get("userActivated").asBoolean()).isTrue();
     }
 
     @Test
@@ -275,6 +304,14 @@ public class AuthControllerTest extends AbstractControllerTest {
         SecuritySettings securitySettings = doGet("/api/admin/securitySettings", SecuritySettings.class);
         updater.accept(securitySettings);
         doPost("/api/admin/securitySettings", securitySettings).andExpect(status().isOk());
+    }
+
+    private User getCurrentUser() throws Exception {
+        return doGet("/api/auth/user", User.class);
+    }
+
+    private User getUser(UserId id) throws Exception {
+        return doGet("/api/user/" + id, User.class);
     }
 
     private String getActivationLink(User user) throws Exception {

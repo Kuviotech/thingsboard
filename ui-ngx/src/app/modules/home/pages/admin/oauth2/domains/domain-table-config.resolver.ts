@@ -15,7 +15,7 @@
 ///
 
 import { Injectable } from '@angular/core';
-import { ActivatedRouteSnapshot, Resolve } from '@angular/router';
+import { ActivatedRouteSnapshot } from '@angular/router';
 import {
   DateEntityTableColumn,
   EntityActionTableColumn,
@@ -24,7 +24,6 @@ import {
   EntityTableConfig
 } from '@home/models/entity/entities-table-config.models';
 import { DomainInfo } from '@shared/models/oauth2.models';
-import { UtilsService } from '@core/services/utils.service';
 import { TranslateService } from '@ngx-translate/core';
 import { DatePipe } from '@angular/common';
 import { EntityType, entityTypeResources, entityTypeTranslations } from '@shared/models/entity-type.models';
@@ -33,18 +32,16 @@ import { DomainComponent } from '@home/pages/admin/oauth2/domains/domain.compone
 import { isEqual } from '@core/utils';
 import { DomainTableHeaderComponent } from '@home/pages/admin/oauth2/domains/domain-table-header.component';
 import { Direction } from '@app/shared/models/page/sort-order';
-import { map, Observable, of, mergeMap } from 'rxjs';
+import { map, mergeMap, Observable, of } from 'rxjs';
 
 @Injectable()
-export class DomainTableConfigResolver implements Resolve<EntityTableConfig<DomainInfo>> {
+export class DomainTableConfigResolver  {
 
   private readonly config: EntityTableConfig<DomainInfo> = new EntityTableConfig<DomainInfo>();
 
   constructor(private translate: TranslateService,
               private datePipe: DatePipe,
-              private utilsService: UtilsService,
               private domainService: DomainService) {
-    this.config.tableTitle = this.translate.instant('admin.oauth2.domains');
     this.config.selectionEnabled = false;
     this.config.entityType = EntityType.DOMAIN;
     this.config.rowPointer = true;
@@ -106,7 +103,7 @@ export class DomainTableConfigResolver implements Resolve<EntityTableConfig<Doma
     this.config.deleteEntity = id => this.domainService.deleteDomain(id.id);
   }
 
-  resolve(route: ActivatedRouteSnapshot): EntityTableConfig<DomainInfo> {
+  resolve(_route: ActivatedRouteSnapshot): EntityTableConfig<DomainInfo> {
     return this.config;
   }
 

@@ -52,6 +52,7 @@ import {
   isUndefined,
   isUndefinedOrNull,
   mergeDeep,
+  mergeDeepIgnoreArray,
   parseFunction
 } from '@core/utils';
 import { BehaviorSubject, forkJoin, Observable, Observer, of, Subject } from 'rxjs';
@@ -220,8 +221,8 @@ export interface ScadaSymbolMetadata {
 
 export const emptyMetadata = (width?: number, height?: number): ScadaSymbolMetadata => ({
   title: '',
-  widgetSizeX: width ? width/100 : 3,
-  widgetSizeY: height ? height/100 : 3,
+  widgetSizeX: width ? Math.max(Math.round(width/100), 1) : 3,
+  widgetSizeY: height ? Math.max(Math.round(height/100), 1) : 3,
   tags: [],
   behavior: [],
   properties: []
@@ -415,6 +416,10 @@ export const defaultGetValueSettings = (valueType: ValueType): GetValueSettings<
   getTimeSeries: {
     key: 'state'
   },
+  getAlarmStatus: {
+    severityList: null,
+    typeList: null
+  },
   dataToValue: {
     type: DataToValueType.NONE,
     compareToValue: true,
@@ -560,7 +565,7 @@ export class ScadaSymbolObject {
     const doc: XMLDocument = new DOMParser().parseFromString(this.svgContent, 'image/svg+xml');
     this.metadata = parseScadaSymbolMetadataFromDom(doc);
     const defaults = defaultScadaSymbolObjectSettings(this.metadata);
-    this.settings = mergeDeep<ScadaSymbolObjectSettings>({} as ScadaSymbolObjectSettings,
+    this.settings = mergeDeepIgnoreArray<ScadaSymbolObjectSettings>({} as ScadaSymbolObjectSettings,
       defaults, this.inputSettings || {} as ScadaSymbolObjectSettings);
     this.prepareMetadata();
     this.prepareSvgShape(doc);
@@ -1168,13 +1173,13 @@ class CssScadaSymbolAnimation implements ScadaSymbolAnimation {
               private element: Element,
               duration = 1000)  {
     this._duration = duration;
-    this.fixPatternAnimationForChromeBelow128();
+    this.fixPatternAnimationForChrome();
   }
 
-  private fixPatternAnimationForChromeBelow128(): void {
+  private fixPatternAnimationForChrome(): void {
     try {
       const userAgent = window.navigator.userAgent;
-      if (+(/Chrome\/(\d+)/i.exec(userAgent)[1]) <= 127) {
+      if (+(/Chrome\/(\d+)/i.exec(userAgent)[1]) > 0) {
         if (this.svgShape.defs().findOne('pattern')  && !this.svgShape.defs().findOne('pattern.empty-animation')) {
           this.svgShape.defs().add(SVG('<pattern class="empty-animation"></pattern>'));
           this.svgShape.style()
