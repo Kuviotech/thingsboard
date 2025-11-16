@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2024 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -105,6 +105,17 @@ export class TimeSeriesChartWidgetSettingsComponent extends WidgetSettingsCompon
     const params = widgetConfig.typeParameters as any;
     if (isDefinedAndNotNull(params.chartType)) {
       this.chartType = params.chartType;
+    } else {
+      this.chartType = TimeSeriesChartType.default;
+    }
+    if (this.timeSeriesChartWidgetSettingsForm) {
+      const isStateChartType = this.chartType === TimeSeriesChartType.state;
+      const hasStatesControl = this.timeSeriesChartWidgetSettingsForm.contains('states');
+      if (isStateChartType && !hasStatesControl) {
+        this.timeSeriesChartWidgetSettingsForm.addControl('states', this.fb.control(widgetConfig.config.settings.states), { emitEvent: false });
+      } else if (!isStateChartType && hasStatesControl) {
+        this.timeSeriesChartWidgetSettingsForm.removeControl('states', { emitEvent: false });
+      }
     }
   }
 

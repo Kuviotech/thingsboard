@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2024 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -166,11 +166,17 @@ export class MobileAppComponent extends EntityComponent<MobileApp> {
           ? this.entityForm.get('versionInfo.latestVersionReleaseNotes').value
           : this.entityForm.get('versionInfo.minVersionReleaseNotes').value
       };
-      const releaseNotesPanelPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, EditorPanelComponent, ['leftOnly', 'leftBottomOnly', 'leftTopOnly'], true, null,
-        ctx,
-        {},
-        {}, {}, false, () => {}, {padding: '16px 24px'});
+      const releaseNotesPanelPopover = this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        hostView: this.viewContainerRef,
+        componentType: EditorPanelComponent,
+        preferredPlacement: ['leftOnly', 'leftBottomOnly', 'leftTopOnly'],
+        context: ctx,
+        showCloseButton: false,
+        popoverContentStyle: {padding: '16px 24px'},
+        isModal: false
+      });
       releaseNotesPanelPopover.tbComponentRef.instance.popover = releaseNotesPanelPopover;
       releaseNotesPanelPopover.tbComponentRef.instance.editorContentApplied.subscribe((releaseNotes) => {
         releaseNotesPanelPopover.hide();
