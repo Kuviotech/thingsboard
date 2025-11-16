@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2024 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ import org.thingsboard.server.service.ws.WebSocketSessionRef;
 import org.thingsboard.server.service.ws.telemetry.sub.TelemetrySubscriptionUpdate;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -154,9 +155,8 @@ public abstract class TbAbstractEntityQuerySubCtx<T extends EntityCountQuery> ex
     private void dynamicValueSubUpdate(String sessionId, TelemetrySubscriptionUpdate subscriptionUpdate,
                                        Map<String, DynamicValueKeySub> dynamicValueKeySubMap) {
         Map<String, TsValue> latestUpdate = new HashMap<>();
-        subscriptionUpdate.getData().forEach((k, v) -> {
-            Object[] data = (Object[]) v.get(0);
-            latestUpdate.put(k, new TsValue((Long) data[0], (String) data[1]));
+        subscriptionUpdate.getValues().forEach((key, values) -> {
+            latestUpdate.put(key, getLatest(values));
         });
 
         boolean invalidateFilter = false;
@@ -281,6 +281,12 @@ public abstract class TbAbstractEntityQuerySubCtx<T extends EntityCountQuery> ex
             log.trace("[{}][{}] Canceling old refresh task", sessionRef.getSessionId(), cmdId);
             this.refreshTask.cancel(true);
         }
+    }
+
+    protected TsValue getLatest(List<TsValue> values) {
+        return values.stream()
+                .max(Comparator.comparing(TsValue::getTs))
+                .orElse(null);
     }
 
     @Data

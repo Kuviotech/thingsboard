@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2024 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.grpc.Server;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.Nullable;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +31,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.common.util.ThingsBoardExecutors;
+import org.thingsboard.rule.engine.api.AttributesSaveRequest;
+import org.thingsboard.rule.engine.api.TimeseriesSaveRequest;
 import org.thingsboard.server.cache.TbTransactionalCache;
 import org.thingsboard.server.cluster.TbClusterService;
 import org.thingsboard.server.common.data.AttributeScope;
@@ -41,7 +42,6 @@ import org.thingsboard.server.common.data.edge.Edge;
 import org.thingsboard.server.common.data.edge.EdgeEvent;
 import org.thingsboard.server.common.data.id.EdgeId;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.kv.BasicTsKvEntry;
 import org.thingsboard.server.common.data.kv.BooleanDataEntry;
 import org.thingsboard.server.common.data.kv.LongDataEntry;
 import org.thingsboard.server.common.data.msg.TbMsgType;
@@ -62,13 +62,13 @@ import org.thingsboard.server.queue.discovery.TopicService;
 import org.thingsboard.server.queue.kafka.TbKafkaSettings;
 import org.thingsboard.server.queue.kafka.TbKafkaTopicConfigs;
 import org.thingsboard.server.queue.provider.TbCoreQueueFactory;
+import org.thingsboard.server.queue.util.AfterStartUp;
 import org.thingsboard.server.queue.util.TbCoreComponent;
 import org.thingsboard.server.service.edge.EdgeContextComponent;
 import org.thingsboard.server.service.telemetry.TelemetrySubscriptionService;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -162,8 +162,8 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
 
     private ScheduledExecutorService executorService;
 
-    @PostConstruct
-    public void init() {
+    @AfterStartUp(order = AfterStartUp.REGULAR_SERVICE)
+    public void onStartUp() {
         log.info("Initializing Edge RPC service!");
         NettyServerBuilder builder = NettyServerBuilder.forPort(rpcPort)
                 .permitKeepAliveTime(clientMaxKeepAliveTimeSec, TimeUnit.SECONDS)
@@ -328,6 +328,9 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
         Edge edge = edgeGrpcSession.getEdge();
         TenantId tenantId = edge.getTenantId();
         log.info("[{}][{}] edge [{}] connected successfully.", tenantId, edgeGrpcSession.getSessionId(), edgeId);
+        if (sessions.containsKey(edgeId)) {
+            destroySession(sessions.get(edgeId));
+        }
         sessions.put(edgeId, edgeGrpcSession);
         final Lock newEventLock = sessionNewEventsLocks.computeIfAbsent(edgeId, id -> new ReentrantLock());
         newEventLock.lock();
@@ -493,7 +496,7 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
             } finally {
                 newEventLock.unlock();
             }
-            toRemove.destroy();
+            destroySession(toRemove);
             TenantId tenantId = toRemove.getEdge().getTenantId();
             save(tenantId, edgeId, ACTIVITY_STATE, false);
             long lastDisconnectTs = System.currentTimeMillis();
@@ -506,27 +509,49 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
         edgeIdServiceIdCache.evict(edgeId);
     }
 
+    private void destroySession(EdgeGrpcSession session) {
+        try (session) {
+            session.destroy();
+        }
+    }
+
     private void save(TenantId tenantId, EdgeId edgeId, String key, long value) {
         log.debug("[{}][{}] Updating long edge telemetry [{}] [{}]", tenantId, edgeId, key, value);
         if (persistToTelemetry) {
-            tsSubService.saveAndNotify(
-                    tenantId, edgeId,
-                    Collections.singletonList(new BasicTsKvEntry(System.currentTimeMillis(), new LongDataEntry(key, value))),
-                    new AttributeSaveCallback(tenantId, edgeId, key, value));
+            tsSubService.saveTimeseries(TimeseriesSaveRequest.builder()
+                    .tenantId(tenantId)
+                    .entityId(edgeId)
+                    .entry(new LongDataEntry(key, value))
+                    .callback(new AttributeSaveCallback(tenantId, edgeId, key, value))
+                    .build());
         } else {
-            tsSubService.saveAttrAndNotify(tenantId, edgeId, AttributeScope.SERVER_SCOPE, key, value, new AttributeSaveCallback(tenantId, edgeId, key, value));
+            tsSubService.saveAttributes(AttributesSaveRequest.builder()
+                    .tenantId(tenantId)
+                    .entityId(edgeId)
+                    .scope(AttributeScope.SERVER_SCOPE)
+                    .entry(new LongDataEntry(key, value))
+                    .callback(new AttributeSaveCallback(tenantId, edgeId, key, value))
+                    .build());
         }
     }
 
     private void save(TenantId tenantId, EdgeId edgeId, String key, boolean value) {
         log.debug("[{}][{}] Updating boolean edge telemetry [{}] [{}]", tenantId, edgeId, key, value);
         if (persistToTelemetry) {
-            tsSubService.saveAndNotify(
-                    tenantId, edgeId,
-                    Collections.singletonList(new BasicTsKvEntry(System.currentTimeMillis(), new BooleanDataEntry(key, value))),
-                    new AttributeSaveCallback(tenantId, edgeId, key, value));
+            tsSubService.saveTimeseries(TimeseriesSaveRequest.builder()
+                    .tenantId(tenantId)
+                    .entityId(edgeId)
+                    .entry(new BooleanDataEntry(key, value))
+                    .callback(new AttributeSaveCallback(tenantId, edgeId, key, value))
+                    .build());
         } else {
-            tsSubService.saveAttrAndNotify(tenantId, edgeId, AttributeScope.SERVER_SCOPE, key, value, new AttributeSaveCallback(tenantId, edgeId, key, value));
+            tsSubService.saveAttributes(AttributesSaveRequest.builder()
+                    .tenantId(tenantId)
+                    .entityId(edgeId)
+                    .scope(AttributeScope.SERVER_SCOPE)
+                    .entry(new BooleanDataEntry(key, value))
+                    .callback(new AttributeSaveCallback(tenantId, edgeId, key, value))
+                    .build());
         }
     }
 
@@ -568,7 +593,7 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
                 edgeState.put(ACTIVITY_STATE, false);
                 edgeState.put(LAST_DISCONNECT_TIME, ts);
             }
-            ctx.getNotificationRuleProcessor().process(EdgeConnectionTrigger.builder()
+            ctx.getRuleProcessor().process(EdgeConnectionTrigger.builder()
                     .tenantId(tenantId)
                     .customerId(edge.getCustomerId())
                     .edgeId(edgeId)
@@ -581,7 +606,13 @@ public class EdgeGrpcService extends EdgeRpcServiceGrpc.EdgeRpcServiceImplBase i
                 md.putValue("edgeName", edge.getName());
                 md.putValue("edgeType", edge.getType());
             }
-            TbMsg tbMsg = TbMsg.newMsg(msgType, edgeId, md, TbMsgDataType.JSON, data);
+            TbMsg tbMsg = TbMsg.newMsg()
+                    .type(msgType)
+                    .originator(edgeId)
+                    .copyMetaData(md)
+                    .dataType(TbMsgDataType.JSON)
+                    .data(data)
+                    .build();
             clusterService.pushMsgToRuleEngine(tenantId, edgeId, tbMsg, null);
         } catch (Exception e) {
             log.warn("[{}][{}] Failed to push {}", tenantId, edge.getId(), msgType, e);

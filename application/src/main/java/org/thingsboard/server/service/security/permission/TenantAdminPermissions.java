@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2024 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.security.Authority;
 import org.thingsboard.server.service.security.model.SecurityUser;
 
-@Component(value="tenantAdminPermissions")
+@Component(value = "tenantAdminPermissions")
 public class TenantAdminPermissions extends AbstractPermissions {
 
     public TenantAdminPermissions() {
@@ -61,7 +61,6 @@ public class TenantAdminPermissions extends AbstractPermissions {
 
         @Override
         public boolean hasPermission(SecurityUser user, Operation operation, EntityId entityId, HasTenantId entity) {
-
             if (!user.getTenantId().equals(entity.getTenantId())) {
                 return false;
             }
